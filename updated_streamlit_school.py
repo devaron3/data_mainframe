@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
+# Authentication Check
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
@@ -16,89 +17,103 @@ def login():
         else:
             st.error("Access denied. Try again.")
 
-def main_app():
-    # Load the data (replace 'your_data.csv' with your actual file)
-    @st.cache_data
-    def load_data():
-        return pd.read_csv("C:/Users/devar/Downloads/data.csv")
+def plot_scores(student_scores, title):
+    """Helper function to plot student scores."""
+    if not student_scores.empty:
+        fig, ax = plt.subplots()
+        bars = ax.bar(student_scores.index, student_scores["Score"], color="skyblue")
 
-    data = load_data()
+        # Add data labels on top of bars
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width() / 2, height, f"{height:.0f}", ha="center", va="bottom")
 
-    # Ensure 'Student Name' and 'Advisor' columns exist
-    if "Student Name" not in data.columns or "Advisor" not in data.columns:
-        st.error("CSV file must include both 'Student Name' and 'Advisor' columns.")
+        # Trendline
+        x = np.arange(len(student_scores))
+        y = student_scores["Score"].values
+
+        if len(x) > 1:
+            z = np.polyfit(x, y, 1)
+            p = np.poly1d(z)
+            ax.plot(x, p(x), color="red", linestyle="--", linewidth=2, label="Trendline")
+
+        plt.xticks(rotation=45, ha="right")
+        plt.xlabel("Test")
+        plt.ylabel("Score")
+        plt.title(title)
+        ax.legend()
+        st.pyplot(fig)
     else:
-        # Sort the students based on the "Advisor" column (alphabetically)
-        sorted_data = data.sort_values(by="Advisor")
-        
-        # Sidebar: Select a student along with the advisor name
-        # Combine Student Name and Advisor for display in dropdown
-        student_advisor_list = sorted_data.apply(lambda row: f"{row['Student Name']} ({row['Advisor']})", axis=1).dropna().unique().tolist()
-        student_advisor_list.insert(0, "")  # Add a blank option at the top
-        selected_student_advisor = st.sidebar.selectbox("Select a Student", student_advisor_list)
+        st.warning(f"No valid test scores available for {title}.")
 
-        # Only proceed if a valid student-advisor pair is selected
-        if selected_student_advisor:
-            # Extract the student name from the combined string
-            selected_student_name = selected_student_advisor.split(" (")[0]
+def main_app():
+    st.title("Student Test Score Analysis")
 
-            # Filter data for the selected student
-            student_data = sorted_data[sorted_data["Student Name"] == selected_student_name].drop(columns=["Student Name", "Advisor"])
+    # Upload CSV Files
+    file1 = st.sidebar.file_uploader("Upload First Test Score CSV", type=["csv"])
+    file2 = st.sidebar.file_uploader("Upload Second Test Score CSV", type=["csv"])
 
-            # Exclude the "Advisor" column if present
-            if student_data.shape[1] > 1:
-                student_data = student_data.iloc[:, 1:]  # Drop the first remaining column
-            
-            # Drop columns where the student has no score
-            student_data = student_data.dropna(axis=1)
+    if not file1 and not file2:
+        st.warning("Please upload at least one CSV file to continue.")
+        return
 
-            # Convert scores to numeric (if needed)
-            student_data = student_data.apply(pd.to_numeric, errors="coerce")
+    # Load DataFrames
+    scores1 = pd.read_csv(file1) if file1 else None
+    scores2 = pd.read_csv(file2) if file2 else None
 
-            # Transpose data for better visualization
-            student_data = student_data.T
-            student_data.columns = ["Score"]  # Rename the column for clarity
+    # Ensure required columns exist
+    if scores1 is not None and "Student Name" not in scores1.columns:
+        st.error("The first CSV must include a 'Student Name' column.")
+        return
+    if scores2 is not None and "Student Name" not in scores2.columns:
+        st.error("The second CSV must include a 'Student Name' column.")
+        return
 
-            # Display results
-            st.write(f"### Test Scores for {selected_student_name} (Advisor: {sorted_data.loc[sorted_data['Student Name'] == selected_student_name, 'Advisor'].values[0]})")
+    # Use the first dataset for student list (if available)
+    if scores1 is not None and "Advisor" in scores1.columns:
+        student_list = scores1[["Student Name", "Advisor"]].dropna().sort_values(by="Advisor").values.tolist()
+    elif scores2 is not None and "Advisor" in scores2.columns:
+        student_list = scores2[["Student Name", "Advisor"]].dropna().sort_values(by="Advisor").values.tolist()
+    else:
+        student_list = (scores1 or scores2)["Student Name"].dropna().unique().tolist()
 
-            # Plot with Matplotlib for label rotation
-            if not student_data.empty:
-                fig, ax = plt.subplots()
-                bars = ax.bar(student_data.index, student_data["Score"], color="skyblue")
+    # Sidebar: Select a student (sorted by advisor)
+    student_list = [("", "")] + student_list  # Add a blank option
+    formatted_students = [f"{name} ({adv})" for name, adv in student_list if name]
 
-                # Add data labels on top of bars
-                for bar in bars:
-                    height = bar.get_height()
-                    ax.text(bar.get_x() + bar.get_width() / 2, height, f"{height:.0f}", 
-                            ha="center", va="bottom", fontsize=10, fontweight="bold")
+    selected_student = st.sidebar.selectbox(
+        "Select a Student",
+        options=formatted_students
+    )
 
-                # Trendline code, not sure if I want to include it
-                # # Trendline (Linear Fit)
-                # x = np.arange(len(student_data))  # Numeric indices for x-axis
-                # y = student_data["Score"].values  # Scores as y-values
+    # Extract the actual student name from the formatted string
+    selected_student = selected_student.split(" (")[0] if selected_student else ""
 
-                # if len(x) > 1:  # Ensure there's enough data for a trendline
-                #     z = np.polyfit(x, y, 1)  # Linear regression (degree=1)
-                #     p = np.poly1d(z)  # Create polynomial function
 
-                #     ax.plot(x, p(x), color="red", linestyle="--", linewidth=2, label="Trendline")
+    if selected_student:
+        # Display scores from the first dataset (if uploaded)
+        if scores1 is not None:
+            student_scores1 = scores1[scores1["Student Name"] == selected_student].drop(columns=["Student Name", "Advisor"], errors="ignore")
+            if student_scores1.shape[1] > 1:
+                student_scores1 = student_scores1.iloc[:, 1:].dropna(axis=1)
 
-                # Rotate x-axis labels
-                plt.xticks(rotation=45, ha="right")
+            student_scores1 = student_scores1.apply(pd.to_numeric, errors="coerce").T
+            student_scores1.columns = ["Score"]
 
-                # Labels and title
-                plt.xlabel("Test")
-                plt.ylabel("Score")
-                plt.title(f"Test Scores for {selected_student_name}")
+            st.write(f"### Test Scores for {selected_student} (First Dataset)")
+            plot_scores(student_scores1, f"Test Scores for {selected_student} (First Dataset)")
 
-                # Show legend
-                ax.legend()
+        # Display scores from the second dataset (if uploaded)
+        if scores2 is not None:
+            student_scores2 = scores2[scores2["Student Name"] == selected_student].drop(columns=["Student Name", "Advisor"], errors="ignore")
+            if student_scores2.shape[1] > 1:
+                student_scores2 = student_scores2.iloc[:, 1:].dropna(axis=1)
 
-                # Display plot in Streamlit
-                st.pyplot(fig)
-            else:
-                st.warning(f"No valid test scores available for {selected_student_name}.")
+            student_scores2 = student_scores2.apply(pd.to_numeric, errors="coerce").T
+            student_scores2.columns = ["Score"]
+
+            st.write(f"### Test Scores for {selected_student} (Second Dataset)")
+            plot_scores(student_scores2, f"Test Scores for {selected_student} (Second Dataset)")
 
 if st.session_state.authenticated:
     main_app()
