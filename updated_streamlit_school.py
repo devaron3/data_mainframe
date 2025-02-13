@@ -10,7 +10,7 @@ def load_csv(file):
     return None, None
 
 # Sidebar: Upload files
-st.sidebar.header("Upload CSV Files")
+st.sidebar.header("Upload CSV Files, then Select a Student")
 uploaded_file1 = st.sidebar.file_uploader("Upload First Dataset", type=["csv"])
 uploaded_file2 = st.sidebar.file_uploader("Upload Second Dataset", type=["csv"])
 uploaded_file3 = st.sidebar.file_uploader("Upload Third Dataset", type=["csv"])
