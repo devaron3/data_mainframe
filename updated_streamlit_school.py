@@ -3,119 +3,104 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Authentication Check
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+# Function to load CSV file
+def load_csv(file):
+    if file:
+        return pd.read_csv(file), file.name.replace(".csv", "")
+    return None, None
 
-def login():
-    st.title("Login")
-    password = st.text_input("Enter password:", type="password")
-    if st.button("Login"):
-        if password == "PPHS2024":  # Replace with your password
-            st.session_state.authenticated = True
-            st.success("Access granted!")
-        else:
-            st.error("Access denied. Try again.")
+# Sidebar: Upload files
+st.sidebar.header("Upload CSV Files")
+uploaded_file1 = st.sidebar.file_uploader("Upload First Dataset", type=["csv"])
+uploaded_file2 = st.sidebar.file_uploader("Upload Second Dataset", type=["csv"])
 
-def plot_scores(student_scores, title):
-    """Helper function to plot student scores."""
-    if not student_scores.empty:
+# Load datasets
+data1, filename1 = load_csv(uploaded_file1)
+data2, filename2 = load_csv(uploaded_file2)
+
+# Set default filenames
+filename1 = filename1 if filename1 else "First Dataset"
+filename2 = filename2 if filename2 else "Second Dataset"
+
+# Check if at least one dataset is uploaded
+if data1 is None and data2 is None:
+    st.warning("Please upload at least one dataset.")
+    st.stop()
+
+# Function to process student list
+def extract_students(data):
+    if data is not None and "Student Name" in data.columns and "Advisor" in data.columns:
+        return [(row["Student Name"], row["Advisor"]) for _, row in data[["Student Name", "Advisor"]].dropna().iterrows()]
+    return []
+
+# Combine and sort student lists by Advisor
+student_list1 = extract_students(data1)
+student_list2 = extract_students(data2)
+
+# Fix: Use a set of tuples (not lists) to remove duplicates
+student_list = sorted(set(student_list1 + student_list2), key=lambda x: x[1])
+
+# Format student dropdown: "John Doe (Ms. Smith)"
+formatted_students = [f"{name} ({adv})" for name, adv in student_list if name]
+formatted_students.insert(0, "")  # Blank option
+
+# Sidebar: Select a student
+selected_student = st.sidebar.selectbox("Select a Student", formatted_students)
+
+# Extract actual student name (before the advisor part)
+selected_student = selected_student.split(" (")[0] if selected_student else None
+
+# Function to process student data
+def process_student_data(data, student_name):
+    if data is None or "Student Name" not in data.columns or student_name not in data["Student Name"].values:
+        return None
+    student_data = data[data["Student Name"] == student_name].drop(columns=["Student Name", "Advisor"], errors="ignore")
+
+    if student_data.shape[1] > 1:
+        student_data = student_data.iloc[:, 1:]  
+
+    student_data = student_data.dropna(axis=1).T
+    student_data.columns = ["Score"]
+    return student_data.apply(pd.to_numeric, errors="coerce")
+
+# Function to create bar chart
+def plot_chart(student_data, filename):
+    if student_data is not None and not student_data.empty:
         fig, ax = plt.subplots()
-        bars = ax.bar(student_scores.index, student_scores["Score"], color="skyblue")
+        bars = ax.bar(student_data.index, student_data["Score"], color="skyblue")
 
-        # Add data labels on top of bars
         for bar in bars:
             height = bar.get_height()
-            ax.text(bar.get_x() + bar.get_width() / 2, height, f"{height:.0f}", ha="center", va="bottom")
+            ax.text(bar.get_x() + bar.get_width() / 2, height, f"{height:.0f}", 
+                    ha="center", va="bottom", fontsize=10, fontweight="bold")
 
-        # Trendline
-        x = np.arange(len(student_scores))
-        y = student_scores["Score"].values
-
+        x = np.arange(len(student_data))
+        y = student_data["Score"].values
         if len(x) > 1:
             z = np.polyfit(x, y, 1)
             p = np.poly1d(z)
             ax.plot(x, p(x), color="red", linestyle="--", linewidth=2, label="Trendline")
 
         plt.xticks(rotation=45, ha="right")
-        plt.xlabel("Test")
+        # plt.xlabel(f"{filename}")
         plt.ylabel("Score")
-        plt.title(title)
+        # plt.title(f"Scores for {selected_student} ({filename})")
         ax.legend()
         st.pyplot(fig)
+
+# Display charts
+if selected_student:
+    st.write(f"### Score Analysis for {selected_student}")
+
+    student_data1 = process_student_data(data1, selected_student)
+    student_data2 = process_student_data(data2, selected_student)
+
+    if student_data1 is not None:
+        plot_chart(student_data1, filename1)
     else:
-        st.warning(f"No valid test scores available for {title}.")
+        st.warning(f"No scores available for {selected_student} in {filename1}.")
 
-def main_app():
-    st.title("Student Test Score Analysis")
-
-    # Upload CSV Files
-    file1 = st.sidebar.file_uploader("Upload First Test Score CSV", type=["csv"])
-    file2 = st.sidebar.file_uploader("Upload Second Test Score CSV", type=["csv"])
-
-    if not file1 and not file2:
-        st.warning("Please upload at least one CSV file to continue.")
-        return
-
-    # Load DataFrames
-    scores1 = pd.read_csv(file1) if file1 else None
-    scores2 = pd.read_csv(file2) if file2 else None
-
-    # Ensure required columns exist
-    if scores1 is not None and "Student Name" not in scores1.columns:
-        st.error("The first CSV must include a 'Student Name' column.")
-        return
-    if scores2 is not None and "Student Name" not in scores2.columns:
-        st.error("The second CSV must include a 'Student Name' column.")
-        return
-
-    # Use the first dataset for student list (if available)
-    if scores1 is not None and "Advisor" in scores1.columns:
-        student_list = scores1[["Student Name", "Advisor"]].dropna().sort_values(by="Advisor").values.tolist()
-    elif scores2 is not None and "Advisor" in scores2.columns:
-        student_list = scores2[["Student Name", "Advisor"]].dropna().sort_values(by="Advisor").values.tolist()
+    if student_data2 is not None:
+        plot_chart(student_data2, filename2)
     else:
-        student_list = (scores1 or scores2)["Student Name"].dropna().unique().tolist()
-
-    # Sidebar: Select a student (sorted by advisor)
-    student_list = [("", "")] + student_list  # Add a blank option
-    formatted_students = [f"{name} ({adv})" for name, adv in student_list if name]
-
-    selected_student = st.sidebar.selectbox(
-        "Select a Student",
-        options=formatted_students
-    )
-
-    # Extract the actual student name from the formatted string
-    selected_student = selected_student.split(" (")[0] if selected_student else ""
-
-
-    if selected_student:
-        # Display scores from the first dataset (if uploaded)
-        if scores1 is not None:
-            student_scores1 = scores1[scores1["Student Name"] == selected_student].drop(columns=["Student Name", "Advisor"], errors="ignore")
-            if student_scores1.shape[1] > 1:
-                student_scores1 = student_scores1.iloc[:, 1:].dropna(axis=1)
-
-            student_scores1 = student_scores1.apply(pd.to_numeric, errors="coerce").T
-            student_scores1.columns = ["Score"]
-
-            st.write(f"### Test Scores for {selected_student} (First Dataset)")
-            plot_scores(student_scores1, f"Test Scores for {selected_student} (First Dataset)")
-
-        # Display scores from the second dataset (if uploaded)
-        if scores2 is not None:
-            student_scores2 = scores2[scores2["Student Name"] == selected_student].drop(columns=["Student Name", "Advisor"], errors="ignore")
-            if student_scores2.shape[1] > 1:
-                student_scores2 = student_scores2.iloc[:, 1:].dropna(axis=1)
-
-            student_scores2 = student_scores2.apply(pd.to_numeric, errors="coerce").T
-            student_scores2.columns = ["Score"]
-
-            st.write(f"### Test Scores for {selected_student} (Second Dataset)")
-            plot_scores(student_scores2, f"Test Scores for {selected_student} (Second Dataset)")
-
-if st.session_state.authenticated:
-    main_app()
-else:
-    login()
+        st.warning(f"No scores available for {selected_student} in {filename2}.")
