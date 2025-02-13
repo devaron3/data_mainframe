@@ -13,17 +13,20 @@ def load_csv(file):
 st.sidebar.header("Upload CSV Files")
 uploaded_file1 = st.sidebar.file_uploader("Upload First Dataset", type=["csv"])
 uploaded_file2 = st.sidebar.file_uploader("Upload Second Dataset", type=["csv"])
+uploaded_file3 = st.sidebar.file_uploader("Upload Third Dataset", type=["csv"])
 
 # Load datasets
 data1, filename1 = load_csv(uploaded_file1)
 data2, filename2 = load_csv(uploaded_file2)
+data3, filename3 = load_csv(uploaded_file3)
 
 # Set default filenames
 filename1 = filename1 if filename1 else "First Dataset"
 filename2 = filename2 if filename2 else "Second Dataset"
+filename3 = filename3 if filename3 else "Third Dataset"
 
 # Check if at least one dataset is uploaded
-if data1 is None and data2 is None:
+if data1 is None and data2 is None and data3 is None:
     st.warning("Please upload at least one dataset.")
     st.stop()
 
@@ -36,9 +39,10 @@ def extract_students(data):
 # Combine and sort student lists by Advisor
 student_list1 = extract_students(data1)
 student_list2 = extract_students(data2)
+student_list3 = extract_students(data3)
 
 # Fix: Use a set of tuples (not lists) to remove duplicates
-student_list = sorted(set(student_list1 + student_list2), key=lambda x: x[1])
+student_list = sorted(set(student_list1 + student_list2 + student_list3), key=lambda x: x[1])
 
 # Format student dropdown: "John Doe (Ms. Smith)"
 formatted_students = [f"{name} ({adv})" for name, adv in student_list if name]
@@ -94,6 +98,7 @@ if selected_student:
 
     student_data1 = process_student_data(data1, selected_student)
     student_data2 = process_student_data(data2, selected_student)
+    student_data3 = process_student_data(data3, selected_student)
 
     if student_data1 is not None:
         plot_chart(student_data1, filename1)
@@ -104,3 +109,8 @@ if selected_student:
         plot_chart(student_data2, filename2)
     else:
         st.warning(f"No scores available for {selected_student} in {filename2}.")
+
+    if student_data3 is not None:
+        plot_chart(student_data3, filename3)
+    else:
+        st.warning(f"No scores available for {selected_student} in {filename3}.")
