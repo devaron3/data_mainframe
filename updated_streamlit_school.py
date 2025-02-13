@@ -87,7 +87,7 @@ def plot_chart(student_data, filename):
 
         plt.xticks(rotation=45, ha="right")
         # plt.xlabel(f"{filename}")
-        plt.ylabel("Score")
+        plt.ylabel(f"{filename} Score")
         # plt.title(f"Scores for {selected_student} ({filename})")
         ax.legend()
         st.pyplot(fig)
